@@ -6,29 +6,25 @@ import torchvision.transforms as transforms
 from torchvision import models
 import torchxrayvision as xrv
 import skimage
-
 import os
 import pickle
 from dataset import load_data
 
-from sklearn.metrics import accuracy_score, roc_auc_score, average_precision_score, confusion_matrix
-import numpy as np
-
-# import sys
-# # sys.path.insert(1, '/home/bill/Desktop/projects/concept-explanations/6-cluster')
-# sys.path.append('/home/bill/Desktop/projects/concept-explanations/6-cluster')
-# from run3 import load_model_c_to_y
 
 
-def load_model():
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+def load_model(pth_path):
+    """ Pretty straight forward. Load the pretrained model from torchxrayvision, change the output from 18 to 1 just like we did
+        when we finetuned the model. After that we load the weights from the .pth file, and ready to go!!!
+    """
     model = xrv.models.DenseNet(weights="densenet121-res224-all")
     model.apply_sigmoid = False
     model.op_threshs = None
-    model.classifier = nn.Linear(model.classifier.in_features, 6)
-    model.load_state_dict(torch.load('finetuned_densenet121-res224-all.pth', map_location=torch.device('cpu')))
+    model.classifier = nn.Linear(model.classifier.in_features, 1)
+    model.load_state_dict(torch.load(os.path.join(pth_path, 'finetuned_densenet121-binary.pth'), map_location=device))
     model.eval()
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
 
     print("Model loaded!")
@@ -36,7 +32,7 @@ def load_model():
 
 
 
-def prepare_image(img_path: str):
+def prepare_image(img_path):
     """Make all the transformations and prepare the image for the model inference"""
 
     transform = transforms.Compose([
@@ -62,99 +58,37 @@ def prepare_image(img_path: str):
     return img[None, ...]
 
 
-def run_model(img_path,model,c_to_y):
-
-
+def run_model(model, img_path):
+    """ Just run the img through the model and return the output (0 or 1)"""
     img = prepare_image(img_path)
 
     with torch.no_grad():
         output = model(img)
-        # out = c_to_y(output)
-    
-    # if isinstance(out, (list, tuple)):
-    #     logits = out[0]
-    # else:
-    #     logits = out
-    
-    # probs = torch.softmax(logits, dim=1)
-    # pred_class = torch.argmax(probs, dim=1).item()
+        prob = torch.sigmoid(output)   # convert to probability
+        pred = (prob > 0.5).int().item() 
+
+    return pred
 
 
-    return output, out, pred_class
+def pred_func(img_path):
+    """ A function to use as a black box. Input a image_url and get a cancer prediction output."""
 
+    pth_path = "/your/path/to/finetuned_densenet121-binary.pth/file"
+    model = load_model(pth_path)
+    output = run_model(model, img_path)
 
+    return output
 
-# def test_dataset():
-#     model = load_model()
-#     c_to_y = load_model_c_to_y()
-#     # Find the pickle files
-#     root = "/home/bill/Desktop/projects/concept-explanations/6-cluster"
-#     test_data_path = os.path.join(root, 'test.pkl')
-
-#     with open(test_data_path, "rb") as f:
-#         test_data = pickle.load(f)
-
-#         # test_data format: list of dicts or tuples
-#         # you need to check what fields exist (commonly ["img_path", "label", "attributes"])
-#         print("Example sample:", test_data[0])
-
-#         # ---------------------------
-#         # Evaluate
-#         # ---------------------------
-#         y_true, y_pred = [], []
-
-#         for sample in test_data:
-#             # adapt depending on how pickle stores paths + labels
-#             if isinstance(sample, dict):
-#                 img_path = os.path.join(root, sample["img_path"])
-#                 label = sample["class_label"]    # 0/1 cancer label
-#             else:
-#                 img_path = os.path.join(root, sample[0])  # if tuple
-#                 label = sample[1]
-
-#             _, _, pred = run_model(img_path,model,c_to_y)
-
-#             y_true.append(label)
-#             y_pred.append(pred)
-
-#         y_true = np.array(y_true)
-#         y_pred = np.array(y_pred)
-
-#         # ---------------------------
-#         # Metrics
-#         # ---------------------------
-#         acc = accuracy_score(y_true, y_pred)
-
-#         try:
-#             auc = roc_auc_score(y_true, y_pred)
-#         except ValueError:
-#             auc = None  # if only one class present in preds
-
-#         ap = average_precision_score(y_true, y_pred)
-#         cm = confusion_matrix(y_true, y_pred)
-
-#         print("Evaluation on test.pkl")
-#         print(f"Accuracy: {acc:.4f}")
-#         if auc is not None:
-#             print(f"ROC-AUC: {auc:.4f}")
-#         print(f"PR-AUC: {ap:.4f}")
-#         print("Confusion matrix:")
-#         print(cm)
 
 if __name__ == '__main__':
 
-    root = "/home/bill/Desktop/projects/concept-explanations/6-cluster/images/"
-    img_path = root + os.listdir(root)[0]
-    print(img_path)
+    pth_path = "/your/path/to/finetuned_densenet121-binary.pth/file"
+    model = load_model(pth_path)
 
-    output, out, pred_class = run_model(img_path)
+    img_path = "/your/path/to/the/image/ (for example: /home/ubuntu/my_img.jpg)"
+    output = run_model(model, img_path)
 
-    print(output)
-    print(type(output))
-
-    print(out)
-    print(type(out))
-
-    print(pred_class)
-
-    # test_dataset()
+    if output:
+        print("The patient has cancer")
+    else:
+        print("The patient is healthy!")

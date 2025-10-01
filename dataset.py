@@ -46,25 +46,11 @@ class CUBDataset(Dataset):
     def __getitem__(self, idx):
         img_data = self.data[idx]
         img_path = img_data['img_path'].replace("\\", '/')
-        # Trim unnecessary paths
         try:
-            #print(img_path)
-            #idx = img_path.split('/').index('PA')
-            # idx = -2
-            # if self.image_dir != 'images':
-            #     img_path = '/'.join([self.image_dir] + img_path.split('/')[idx+1:])
-            #     img_path = img_path.replace('images/', '')
-            #     #print('Different {}'.format(img_path))
-            # else:
-            #     img_path = '/'.join(img_path.split('/')[idx:])
-            #     # img_path = 'data/' + img_path # added
-            #     img_path = img_path.replace("\\", '/')
-            #     #print('Same {}'.format(img_path)) 
             img_path = self.image_dir + '/' + img_path
-            # img = Image.open(img_path).convert('RGB')
+
             img = skimage.io.imread(img_path)
             img = xrv.datasets.normalize(img, 255) # convert 8-bit image to [-1024, 1024] range
-            # img.show()
 
             if img.ndim == 3:                 # color image HWC
                 img = img.mean(axis=-1)       # or use luminance: img = img[..., :3] @ [0.299,0.587,0.114]
@@ -73,6 +59,7 @@ class CUBDataset(Dataset):
             else:
                 raise ValueError(f"Unexpected shape {img.shape}")
             img = img[None, ...] 
+            
         except:
             img_path_split = img_path.split('/')
             split = 'train' if self.is_train else 'test'
@@ -118,4 +105,4 @@ def load_data(pkl_paths, use_attr, no_img, batch_size, uncertain_label=False, n_
         drop_last = False
         shuffle = False
 
-    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, drop_last=drop_last)   ## here everytime
+    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, drop_last=drop_last)
