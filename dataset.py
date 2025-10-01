@@ -1,15 +1,13 @@
+"""The Dataset format of CUB"""
 import os
 import torch
 import pickle
 import numpy as np
 import torchvision.transforms as transforms
 import torchxrayvision as xrv
-
 from PIL import Image
-# from config import BASE_DIR, N_ATTRIBUTES
 from torch.utils.data import BatchSampler
 from torch.utils.data import Dataset, DataLoader
-
 import skimage
 
 
@@ -102,49 +100,6 @@ class CUBDataset(Dataset):
             return img, class_label
 
 
-class ImbalancedDatasetSampler(torch.utils.data.sampler.Sampler):
-    """Samples elements randomly from a given list of indices for imbalanced dataset
-    Arguments:
-        indices (list, optional): a list of indices
-        num_samples (int, optional): number of samples to draw
-    """
-
-    def __init__(self, dataset, indices=None):
-        # if indices is not provided,
-        # all elements in the dataset will be considered
-        self.indices = list(range(len(dataset))) \
-            if indices is None else indices
-
-        # if num_samples is not provided,
-        # draw `len(indices)` samples in each iteration
-        self.num_samples = len(self.indices)
-
-        # distribution of classes in the dataset
-        label_to_count = {}
-        for idx in self.indices:
-            label = self._get_label(dataset, idx)
-            if label in label_to_count:
-                label_to_count[label] += 1
-            else:
-                label_to_count[label] = 1
-
-        # weight for each sample
-        weights = [1.0 / label_to_count[self._get_label(dataset, idx)]
-                   for idx in self.indices]
-        self.weights = torch.DoubleTensor(weights)
-
-    def _get_label(self, dataset, idx):  # Note: for single attribute dataset
-        return dataset.data[idx]['attribute_label'][0]
-
-    def __iter__(self):
-        idx = (self.indices[i] for i in torch.multinomial(
-            self.weights, self.num_samples, replacement=True))
-        return idx
-
-    def __len__(self):
-        return self.num_samples
-
-
 
 def load_data(pkl_paths, use_attr, no_img, batch_size, uncertain_label=False, n_class_attr=2, image_dir='images'):
 
@@ -164,41 +119,3 @@ def load_data(pkl_paths, use_attr, no_img, batch_size, uncertain_label=False, n_
         shuffle = False
 
     return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, drop_last=drop_last)   ## here everytime
-
-def find_class_imbalance(pkl_file, multiple_attr=True, attr_idx=-1):
-    """
-    Calculate class imbalance ratio for binary attribute labels stored in pkl_file
-    If attr_idx >= 0, then only return ratio for the corresponding attribute id
-    If multiple_attr is True, then return imbalance ratio separately for each attribute. Else, calculate the overall imbalance across all attributes
-    """
-    imbalance_ratio = []
-    data = pickle.load(open(os.path.join('', pkl_file), 'rb'))
-    n = len(data)
-    n_attr = len(data[0]['attribute_label'])
-    if attr_idx >= 0:
-        n_attr = 1
-    if multiple_attr:
-        n_ones = [0] * n_attr
-        total = [n] * n_attr
-    else:
-        n_ones = [0]
-        total = [n * n_attr]
-    for d in data:
-        labels = d['attribute_label']
-        if multiple_attr:
-            for i in range(n_attr):
-                n_ones[i] += labels[i]
-        else:
-            if attr_idx >= 0:
-                n_ones[0] += labels[attr_idx]
-            else:
-                n_ones[0] += sum(labels)
-    print(n_ones)
-    for j in range(len(n_ones)):
-        if n_ones[j] >= 1: # NOTE: nonexistent attr handling
-            imbalance_ratio.append(total[j]/n_ones[j] - 1)
-        else:
-            imbalance_ratio.append(total[j]/(n_ones[j] + 1) - 1)
-    if not multiple_attr: #e.g. [9.0] --> [9.0] * 312
-        imbalance_ratio *= n_attr
-    return imbalance_ratio
